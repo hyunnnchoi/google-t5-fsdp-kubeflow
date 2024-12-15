@@ -13,7 +13,7 @@ from transformers import T5Tokenizer, T5ForConditionalGeneration
 from transformers.models.t5.modeling_t5 import T5Block
 from datasets import Dataset
 
-def train_function(dataset_url, model_name, num_samples, input_length, output_length, batch_size, num_epochs, learning_rate):
+def train_function(dataset_url, model_name, num_samples, input_length, output_length, batch_size, num_epochs, learning_rate, max_steps):
     parameters = {
         "DATASET_URL": dataset_url,
         "MODEL_NAME": model_name,
@@ -30,7 +30,6 @@ def train_function(dataset_url, model_name, num_samples, input_length, output_le
         raise ValueError(f"Unknown pod name format: {pod_name}")
 
     local_rank = rank % torch.cuda.device_count()
-    rank = int(os.environ.get("RANK", 0))
     world_size = int(os.environ.get("WORLD_SIZE", 1))
 
     # Local rank identifies the GPU number inside the pod.
@@ -39,8 +38,8 @@ def train_function(dataset_url, model_name, num_samples, input_length, output_le
     print(f"FSDP Training for WORLD_SIZE: {world_size}, RANK: {rank}, LOCAL_RANK: {local_rank}, LEARNING_RATE: {learning_rate}")
 
     # [2] Prepare the Wikihow dataset
-    dataset = Dataset.from_csv(dataset_url)
-    dataset = dataset.select(list(range(0, num_samples)))
+    # dataset = Dataset.from_csv(dataset_url)
+    # dataset = dataset.select(list(range(0, num_samples)))
 
     class wikihow(torch.utils.data.Dataset):
         def __init__(
@@ -111,7 +110,6 @@ def train_function(dataset_url, model_name, num_samples, input_length, output_le
             }
 
     # [3] Get the T5 pre-trained model and tokenizer.
-    # Since this script is run by multiple workers, we should print results only for the worker with RANK=0.
     if rank == 0:
         print(f"Downloading the {parameters['MODEL_NAME']} model")
 
@@ -119,31 +117,74 @@ def train_function(dataset_url, model_name, num_samples, input_length, output_le
     DATASET_CACHE_DIR = '/data/wikihow'  # 데이터셋 캐싱 디렉토리
     dataset_path = os.path.normpath(os.path.join(DATASET_CACHE_DIR, "wikihowAll.csv"))
 
+    # 모델 캐싱
     model = T5ForConditionalGeneration.from_pretrained(parameters["MODEL_NAME"], cache_dir=MODEL_CACHE_DIR)
     tokenizer = T5Tokenizer.from_pretrained(parameters["MODEL_NAME"], cache_dir=MODEL_CACHE_DIR)
     model.to(local_rank)
-    # [4] Download the Wikihow dataset.
+
+    # 데이터셋 캐싱
     if rank == 0:
-        print("Downloading the Wikihow dataset")
+        if not os.path.exists(dataset_path):
+            print(f"Dataset not found at {dataset_path}. Downloading...")
+            os.makedirs(DATASET_CACHE_DIR, exist_ok=True)
+            # 데이터 다운로드 후 저장
+            dataset = Dataset.from_csv(dataset_url)
+            dataset.to_pandas().to_csv(dataset_path, index=False)
+        else:
+            print(f"Dataset already exists at {dataset_path}")
 
-    if not os.path.exists(dataset_path):
-        if rank == 0:
-            print(f"Downloading dataset to {dataset_path}")
-        os.makedirs(DATASET_CACHE_DIR, exist_ok=True)
-        dataset = Dataset.from_csv(dataset_url)
-        dataset.to_pandas().to_csv(dataset_path, index=False)
-    else:
+    # 모든 rank가 다운로드가 끝날 때까지 대기
+    dist.barrier()
+
+    # 모든 rank가 동일한 캐시 경로에서 데이터셋을 로드
+    if os.path.exists(dataset_path):
         dataset = Dataset.from_csv(dataset_path)
+    else:
+        raise FileNotFoundError(f"Dataset file not found at {dataset_path}")
 
+    # 샘플 선택
+    dataset = dataset.select(list(range(0, num_samples)))
+
+    # wikihow 데이터셋 생성
     dataset = wikihow(dataset, tokenizer, num_samples, input_length, output_length)
+
+    # DataLoader 생성
     train_loader = torch.utils.data.DataLoader(
         dataset,
         batch_size=batch_size,
         sampler=DistributedSampler(dataset),
+        num_workers=4,  # 데이터 로딩 스레드 추가
     )
+    # # [3] Get the T5 pre-trained model and tokenizer.
+    # if rank == 0:
+    #     print(f"Downloading the {parameters['MODEL_NAME']} model")
 
-    # [5] Setup model with FSDP.
-    # Model is on CPU before input to FSDP.
+    # MODEL_CACHE_DIR = '/data/model_cache'  # 모델 캐싱 디렉토리
+    # DATASET_CACHE_DIR = '/data/wikihow'  # 데이터셋 캐싱 디렉토리
+    # dataset_path = os.path.normpath(os.path.join(DATASET_CACHE_DIR, "wikihowAll.csv"))
+
+    # model = T5ForConditionalGeneration.from_pretrained(parameters["MODEL_NAME"], cache_dir=MODEL_CACHE_DIR)
+    # tokenizer = T5Tokenizer.from_pretrained(parameters["MODEL_NAME"], cache_dir=MODEL_CACHE_DIR)
+    # model.to(local_rank)
+
+    # if not os.path.exists(dataset_path):
+    #     if rank == 0:
+    #         print(f"Downloading dataset to {dataset_path}")
+    #     os.makedirs(DATASET_CACHE_DIR, exist_ok=True)
+    #     dataset = Dataset.from_csv(dataset_url)
+    #     dataset.to_pandas().to_csv(dataset_path, index=False)
+    # else:
+    #     dataset = Dataset.from_csv(dataset_path)
+
+    # dataset = wikihow(dataset, tokenizer, num_samples, input_length, output_length)
+    # train_loader = torch.utils.data.DataLoader(
+    #     dataset,
+    #     batch_size=batch_size,
+    #     sampler=DistributedSampler(dataset),
+    #     num_workers=4,  # 데이터 로딩 스레드 추가
+    # )
+
+    # [4] Setup model with FSDP.
     t5_auto_wrap_policy = functools.partial(
         transformer_auto_wrap_policy,
         transformer_layer_cls={
@@ -156,7 +197,7 @@ def train_function(dataset_url, model_name, num_samples, input_length, output_le
         device_id=torch.cuda.current_device(),
     )
 
-    # [6] Start training.
+    # [5] Start training.
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.7)
     t0 = time.time()
@@ -167,7 +208,10 @@ def train_function(dataset_url, model_name, num_samples, input_length, output_le
         model.train()
         fsdp_loss = torch.zeros(2).to(local_rank)
 
-        for batch in train_loader:
+        for step, batch in enumerate(train_loader):
+            if max_steps is not None and step >= max_steps:  # step 제한
+                break
+            start_batch_time = time.time()
             for key in batch.keys():
                 batch[key] = batch[key].to(local_rank)
 
@@ -184,11 +228,14 @@ def train_function(dataset_url, model_name, num_samples, input_length, output_le
             fsdp_loss[0] += loss.item()
             fsdp_loss[1] += len(batch)
 
+            if step % 10 == 0:  # 매 10 스텝마다 로그 출력
+                print(f"Epoch {epoch}, Step {step}/{len(train_loader)}, Loss: {loss.item():.4f}, Time per batch: {time.time() - start_batch_time:.2f}s")
+
         dist.all_reduce(fsdp_loss, op=dist.ReduceOp.SUM)
         train_accuracy = fsdp_loss[0] / fsdp_loss[1]
 
         if rank == 0:
-            print(f"Train Epoch: \t{epoch}, Loss: \t{train_accuracy:.4f}")
+            print(f"Train Epoch: 	{epoch}, Loss: 	{train_accuracy:.4f}")
         scheduler.step()
 
     dist.barrier()
@@ -207,6 +254,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=4, help="Number of samples per batch during training")
     parser.add_argument("--num_epochs", type=int, default=3, help="Number of epochs to train the model")
     parser.add_argument("--learning_rate", type=float, default=0.002, help="Learning rate for the optimizer")
+    parser.add_argument("--max_steps", type=int, default=None, help="Maximum number of steps to run per epoch")
     args = parser.parse_args()
 
     train_function(
@@ -218,4 +266,5 @@ if __name__ == "__main__":
         batch_size=args.batch_size,  # Number of samples per batch during training
         num_epochs=args.num_epochs,  # Number of epochs to train the model
         learning_rate=args.learning_rate,  # Learning rate for the optimizer
+        max_steps=args.max_steps, # Maximum number of steps to run per epoch
     )
