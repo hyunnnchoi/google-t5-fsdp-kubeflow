@@ -155,34 +155,6 @@ def train_function(dataset_url, model_name, num_samples, input_length, output_le
         sampler=DistributedSampler(dataset),
         num_workers=4,  # 데이터 로딩 스레드 추가
     )
-    # # [3] Get the T5 pre-trained model and tokenizer.
-    # if rank == 0:
-    #     print(f"Downloading the {parameters['MODEL_NAME']} model")
-
-    # MODEL_CACHE_DIR = '/data/model_cache'  # 모델 캐싱 디렉토리
-    # DATASET_CACHE_DIR = '/data/wikihow'  # 데이터셋 캐싱 디렉토리
-    # dataset_path = os.path.normpath(os.path.join(DATASET_CACHE_DIR, "wikihowAll.csv"))
-
-    # model = T5ForConditionalGeneration.from_pretrained(parameters["MODEL_NAME"], cache_dir=MODEL_CACHE_DIR)
-    # tokenizer = T5Tokenizer.from_pretrained(parameters["MODEL_NAME"], cache_dir=MODEL_CACHE_DIR)
-    # model.to(local_rank)
-
-    # if not os.path.exists(dataset_path):
-    #     if rank == 0:
-    #         print(f"Downloading dataset to {dataset_path}")
-    #     os.makedirs(DATASET_CACHE_DIR, exist_ok=True)
-    #     dataset = Dataset.from_csv(dataset_url)
-    #     dataset.to_pandas().to_csv(dataset_path, index=False)
-    # else:
-    #     dataset = Dataset.from_csv(dataset_path)
-
-    # dataset = wikihow(dataset, tokenizer, num_samples, input_length, output_length)
-    # train_loader = torch.utils.data.DataLoader(
-    #     dataset,
-    #     batch_size=batch_size,
-    #     sampler=DistributedSampler(dataset),
-    #     num_workers=4,  # 데이터 로딩 스레드 추가
-    # )
 
     # [4] Setup model with FSDP.
     t5_auto_wrap_policy = functools.partial(
