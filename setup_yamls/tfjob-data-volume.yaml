@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: tfjob-data-volume
+spec:
+  capacity:
+    storage: 900Gi
+  volumeMode: Filesystem
+  accessModes:
+  - ReadWriteMany
+  storageClassName: manual
+  persistentVolumeReclaimPolicy: Retain
+  hostPath:
+    path: /mnt/sdb/share_dir/tfjob
+
+---
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tfjob-data-volume-claim
+spec:
+  accessModes:
+    - ReadWriteMany
+  volumeMode: Filesystem
+  resources:
+    requests:
+      storage: 900Gi
+  storageClassName: manual
