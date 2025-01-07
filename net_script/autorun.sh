@@ -13,8 +13,8 @@ for job_file in "${JOB_FILES[@]}"; do
     # 현재 Job 실행
     kubectl create -f "${job_file}"
 
-    # Job 번호 추출 (t{번호} 부분만 가져옴)
-    job_number=$(basename "${job_file}" .yaml | grep -oE '^t[0-9]+')
+    # Job 번호 추출 (id{번호} 부분만 가져옴)
+    job_number=$(basename "${job_file}" .yaml | grep -oE '^id[0-9]+')
 
     # 모든 관련 Pod들이 조건을 만족할 때까지 대기
     while true; do
