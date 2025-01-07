@@ -29,7 +29,7 @@ for job_file in "${JOB_FILES[@]}"; do
 
         if [ "${CONTROLLER_EXISTS}" -gt 0 ]; then
             # Controller Pod Completed 상태 확인
-            CONTROLLER_COMPLETED=$(echo "${POD_OUTPUT}" | grep "controller" | grep "Completed" | wc -l)
+            CONTROLLER_COMPLETED=$(echo "${POD_OUTPUT}" | grep "master" | grep "Completed" | wc -l)
             echo "Debug: Controller pods completed: ${CONTROLLER_COMPLETED} / ${CONTROLLER_EXISTS}"
 
             if [ "${CONTROLLER_COMPLETED}" -eq "${CONTROLLER_EXISTS}" ]; then
