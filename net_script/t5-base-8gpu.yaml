@@ -28,13 +28,20 @@ spec:
             kubernetes.io/hostname: xsailor-master
           containers:
           - name: pytorch
-            image: potato4332/t5-fsdp:0.0.x-cache
+            image: potato4332/t5-fsdp:0.9.9
             imagePullPolicy: IfNotPresent
-            command:
-              - "/bin/bash"
+            command: ["/bin/sh", "-c"]
             args:
-              - "-c"
-              - "nsys profile --duration=300 -o /result/t5-base-8gpu-master python /workspace/t5-base.py --dataset_url 'https://public-nlp-datasets.s3.us-west-2.amazonaws.com/wikihowAll.csv' --model_name 't5-base' --num_samples 1500 --input_length 512 --output_length 150 --batch_size 5 --num_epochs 1 --learning_rate 0.002 --max_steps 10"
+              - JOB=`python /workspace/job_name.py`;
+                mkdir -p /result/t5_base_8gpu;
+                top -d 0.1 -b | grep t5 > /result/t5_base_8gpu/t5_base_8gpu_${JOB}_cpu.txt &
+                echo "t5_base_8gpu" > /workspace/model.txt;
+                STARTTIME=`date "+%H:%M:%S.%N"`;
+                echo "$STARTTIME" > /result/t5_base_8gpu/t5_base_8gpu_${JOB}_start_time.txt;
+
+                python /workspace/t5-base.py --dataset_url 'https://public-nlp-datasets.s3.us-west-2.amazonaws.com/wikihowAll.csv' --model_name 't5-base' --num_samples 1500 --input_length 512 --output_length 150 --batch_size 5 --num_epochs 1 --learning_rate 0.002 --max_steps 10;
+                ENDTIME=`date "+%H:%M:%S.%N"`;
+                echo "$ENDTIME" > /result/t5_base_8gpu/t5_base_8gpu_${JOB}_end_time.txt;
             env:
             - name: POD_NAME
               valueFrom:
@@ -84,13 +91,20 @@ spec:
             kubernetes.io/hostname: xsailor-master
           containers:
           - name: pytorch
-            image: potato4332/t5-fsdp:0.0.x-cache
+            image: potato4332/t5-fsdp:0.9.9
             imagePullPolicy: IfNotPresent
-            command:
-              - "/bin/bash"
+            command: ["/bin/sh", "-c"]
             args:
-              - "-c"
-              - "nsys profile --duration=300 -o /result/t5-base-8gpu-worker python /workspace/t5-base.py --dataset_url 'https://public-nlp-datasets.s3.us-west-2.amazonaws.com/wikihowAll.csv' --model_name 't5-base' --num_samples 1500 --input_length 512 --output_length 150 --batch_size 5 --num_epochs 1 --learning_rate 0.002 --max_steps 10"
+              - JOB=`python /workspace/job_name.py`;
+                mkdir -p /result/t5_base_8gpu;
+                top -d 0.1 -b | grep t5 > /result/t5_base_8gpu/t5_base_8gpu_${JOB}_cpu.txt &
+                echo "t5_base_8gpu" > /workspace/model.txt;
+                STARTTIME=`date "+%H:%M:%S.%N"`;
+                echo "$STARTTIME" > /result/t5_base_8gpu/t5_base_8gpu_${JOB}_start_time.txt;
+
+                python /workspace/t5-base.py --dataset_url 'https://public-nlp-datasets.s3.us-west-2.amazonaws.com/wikihowAll.csv' --model_name 't5-base' --num_samples 1500 --input_length 512 --output_length 150 --batch_size 5 --num_epochs 1 --learning_rate 0.002 --max_steps 10;
+                ENDTIME=`date "+%H:%M:%S.%N"`;
+                echo "$ENDTIME" > /result/t5_base_8gpu/t5_base_8gpu_${JOB}_end_time.txt;
             env:
             - name: POD_NAME
               valueFrom:
