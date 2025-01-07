@@ -28,7 +28,7 @@ spec:
             kubernetes.io/hostname: xsailor-master
           containers:
           - name: pytorch
-            image: potato4332/t5-fsdp:0.0.x-cache
+            image: potato4332/t5-fsdp:0.9.9
             imagePullPolicy: IfNotPresent
             command: ["/bin/sh", "-c"]
             args:
