@@ -24,12 +24,12 @@ for job_file in "${JOB_FILES[@]}"; do
         echo "${POD_OUTPUT}"
 
         # Controller Pod 확인
-        CONTROLLER_EXISTS=$(echo "${POD_OUTPUT}" | grep "controller" | wc -l)
+        CONTROLLER_EXISTS=$(echo "${POD_OUTPUT}" | grep "master" | wc -l)
         echo "Debug: Controller pod exists: ${CONTROLLER_EXISTS}"
 
         if [ "${CONTROLLER_EXISTS}" -gt 0 ]; then
             # Controller Pod Completed 상태 확인
-            CONTROLLER_COMPLETED=$(echo "${POD_OUTPUT}" | grep "controller" | grep "Completed" | wc -l)
+            CONTROLLER_COMPLETED=$(echo "${POD_OUTPUT}" | grep "master" | grep "Completed" | wc -l)
             echo "Debug: Controller pods completed: ${CONTROLLER_COMPLETED} / ${CONTROLLER_EXISTS}"
 
             if [ "${CONTROLLER_COMPLETED}" -eq "${CONTROLLER_EXISTS}" ]; then
