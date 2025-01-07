@@ -13,9 +13,8 @@ spec:
   capacity:
     storage: 900Gi
   accessModes: ["ReadWriteMany"]
-  nfs:
-    server: 163.152.20.207  
-    path: /mnt/sdb/share_dir/data # NFS server's shared path
+  hostPath:
+    path: /mnt/sdb/share_dir/data # 로컬 경로로 수정
 
 # nfs-pvc.yml
 ---
