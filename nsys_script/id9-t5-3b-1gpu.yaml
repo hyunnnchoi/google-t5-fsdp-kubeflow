@@ -1,0 +1,84 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: fsdp-t5-training-master
+spec:
+  selector:
+    job-name: fsdp-t5-training-master
+  ports:
+    - protocol: TCP
+      port: 29500  # PyTorch 기본 포트
+      targetPort: 29500
+  clusterIP: None  # Headless Service
+---
+apiVersion: kubeflow.org/v1
+kind: PyTorchJob
+metadata:
+  name: fsdp-t5-training
+spec:
+  runPolicy:
+    cleanPodPolicy: None
+  pytorchReplicaSpecs:
+    Master:
+      replicas: 1
+      restartPolicy: Never
+      template:
+        spec:
+          nodeSelector:
+            kubernetes.io/hostname: xsailor-master
+          containers:
+          - name: pytorch
+            image: potato4332/t5-fsdp:0.9.9
+            imagePullPolicy: IfNotPresent
+            command: ["/bin/sh", "-c"]
+            args:
+              - JOB=`python /workspace/job_name.py`;
+                mkdir -p /result/t5_3b_1gpu;
+                top -d 0.1 -b | grep t5 > /result/t5_3b_1gpu/t5_3b_1gpu_${JOB}_cpu.txt &
+                echo "t5_3b_1gpu" > /workspace/model.txt;
+                STARTTIME=`date "+%H:%M:%S.%N"`;
+                echo "$STARTTIME" > /result/t5_3b_1gpu/t5_3b_1gpu_${JOB}_start_time.txt;
+
+                python /workspace/t5-base.py --dataset_url 'https://public-nlp-datasets.s3.us-west-2.amazonaws.com/wikihowAll.csv' --model_name 't5-3b' --num_samples 1500 --input_length 512 --output_length 150 --batch_size 5 --num_epochs 1 --learning_rate 0.002 --max_steps 10;
+                ENDTIME=`date "+%H:%M:%S.%N"`;
+                echo "$ENDTIME" > /result/t5_3b_1gpu/t5_3b_1gpu_${JOB}_end_time.txt;
+            env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: LOCAL_RANK
+              value: "0"  # 마스터의 로컬 랭크
+            - name: RANK
+              value: "0"  # 마스터의 글로벌 랭크
+            - name: WORLD_SIZE
+              value: "1"  # 전체 프로세스 수
+            - name: MASTER_ADDR
+              value: "fsdp-t5-training-master-0"  # 마스터 Pod 이름
+            - name: MASTER_PORT
+              value: "29500"  # PyTorch 기본 포트
+            resources:
+              requests:
+                cpu: 1
+                nvidia.com/gpu: 1
+              limits:
+                cpu: 5
+                nvidia.com/gpu: 1
+            volumeMounts:
+            - mountPath: /result
+              name: tfjob-data
+            - mountPath: /data
+              name: tfjob-dataset
+            - mountPath: /dev/shm
+              name: shmdir
+          volumes:
+          - name: tfjob-data
+            persistentVolumeClaim:
+              claimName: tfjob-data-volume-claim
+          - name: tfjob-dataset
+            persistentVolumeClaim:
+              claimName: tfjob-nfs-dataset-storage-claim
+          - name: shmdir
+            emptyDir:
+              medium: Memory
+              sizeLimit: "8G"
